@@ -39,9 +39,8 @@ namespace oi.plugin.spatialmesh {
 
             using (MemoryStream stream = new MemoryStream()) {
                 using (BinaryWriter writer = new BinaryWriter(stream)) {
-                    WriteMesh(writer, mesh);
-
                     writer.Write(ID);
+                    WriteMesh(writer, mesh);
 
                     stream.Position = 0;
                     data = new byte[stream.Length];
