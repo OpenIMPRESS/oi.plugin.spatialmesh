@@ -5,8 +5,6 @@ using SysDiag = System.Diagnostics;
 using System.IO;
 using UnityEngine;
 
-using HoloToolkit.Unity.SpatialMapping;
-
 
 namespace oi.plugin.spatialmesh {
 

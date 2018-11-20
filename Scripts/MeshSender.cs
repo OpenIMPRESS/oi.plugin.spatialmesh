@@ -1,8 +1,7 @@
-﻿using System.Collections;
+﻿#if !UNITY_EDITOR && UNITY_METRO
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
-
 using HoloToolkit.Unity.SpatialMapping;
 using oi.core.network;
 
@@ -15,7 +14,6 @@ namespace oi.plugin.spatialmesh {
         public UDPConnector connector;
 
         private float timer = 0;
-
         List<int> remove_ids;
         List<ObjectSurfaceObserver.SurfaceObject> send_new;
 
@@ -84,3 +82,4 @@ namespace oi.plugin.spatialmesh {
 
     }
 }
+#endif
