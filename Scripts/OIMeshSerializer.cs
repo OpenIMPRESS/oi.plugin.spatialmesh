@@ -1,10 +1,12 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License. See LICENSE in the project root for license information.
+﻿/// Based on/extending SimpleMeshSerializer.cs from the Microsoft Mixed Reality Toolkit
 
 using System.Collections.Generic;
 using SysDiag = System.Diagnostics;
 using System.IO;
 using UnityEngine;
+
+using HoloToolkit.Unity.SpatialMapping;
+
 
 namespace oi.plugin.spatialmesh {
 
@@ -14,30 +16,34 @@ namespace oi.plugin.spatialmesh {
     }
 
 
-    /// <summary>
-    /// SimpleMeshSerializer converts a UnityEngine.Mesh object to and from an array of bytes.
-    /// This class saves minimal mesh data (vertices and triangle indices) in the following format:
-    ///    File header: vertex count (32 bit integer), triangle count (32 bit integer)
-    ///    Vertex list: vertex.x, vertex.y, vertex.z (all 32 bit float)
-    ///    Triangle index list: 32 bit integers
-    /// </summary>
-    public static class MeshSerializer {
-        /// <summary>
-        /// The mesh header consists of two 32 bit integers.
-        /// </summary>
-        private static int HeaderSize = sizeof(int) * 3;
+    public static class OIMeshSerializer   {
 
-        /// <summary>
-        /// Serializes a list of Mesh objects into a byte array.
-        /// </summary>
-        /// <param name="meshes">List of Mesh objects to be serialized.</param>
-        /// <returns>Binary representation of the Mesh objects.</returns>
-        public static byte[] Serialize(int id, Mesh mesh) {
-            byte[] data = null;
+        private static int HeaderSize = sizeof(int) * 2;
+
+        public static MeshStruct OIDeserialize(byte[] data) {
+            MeshStruct res = new MeshStruct();
+
+            using (MemoryStream stream = new MemoryStream(data)) {
+                using (BinaryReader reader = new BinaryReader(stream)) {
+                    res.ID = reader.ReadInt32();
+                    while (reader.BaseStream.Length - reader.BaseStream.Position >= HeaderSize) {
+                        res.mesh = ReadMesh(reader);
+                    }
+                }
+            }
+
+            return res;
+        }
+
+        // Serialize a single mesh for sending over network
+        public static byte[] OISerialize(int ID, Mesh mesh) {
+            byte[] data;
 
             using (MemoryStream stream = new MemoryStream()) {
                 using (BinaryWriter writer = new BinaryWriter(stream)) {
-                    WriteMesh(writer, id, mesh);
+                    WriteMesh(writer, mesh);
+
+                    writer.Write(ID);
 
                     stream.Position = 0;
                     data = new byte[stream.Length];
@@ -49,13 +55,68 @@ namespace oi.plugin.spatialmesh {
         }
 
 
+
+ 
+        // EVERYTHING BELOW IS A COPY OF  SimpleMeshSerializer.cs FROM THE Microsoft Mixed Reality Toolkit
+
+
+
+        /// <summary>
+        /// Serializes a list of Mesh objects into a byte array.
+        /// </summary>
+        /// <param name="meshes">List of Mesh objects to be serialized.</param>
+        /// <returns>Binary representation of the Mesh objects.</returns>
+        public static byte[] Serialize(IEnumerable<Mesh> meshes) {
+            byte[] data;
+
+            using (MemoryStream stream = new MemoryStream()) {
+                using (BinaryWriter writer = new BinaryWriter(stream)) {
+                    foreach (Mesh mesh in meshes) {
+                        WriteMesh(writer, mesh);
+                    }
+
+                    stream.Position = 0;
+                    data = new byte[stream.Length];
+                    stream.Read(data, 0, data.Length);
+                }
+            }
+
+            return data;
+        }
+
+        /// <summary>
+        /// Serializes a list of MeshFilter objects into a byte array.
+        /// Transforms vertices into world space before writing to the file.
+        /// Optionally transforms the vertices into the space of the supplied secondarySpace
+        /// </summary>
+        /// <param name="meshes">List of MeshFilter objects to be serialized.</param>
+        /// <param name="secondarySpace">New space to transform the vertices into.</param>
+        /// <returns>Binary representation of the Mesh objects.</returns>
+        public static byte[] Serialize(IEnumerable<MeshFilter> meshes, Transform secondarySpace = null) {
+            byte[] data = null;
+
+            using (MemoryStream stream = new MemoryStream()) {
+                using (BinaryWriter writer = new BinaryWriter(stream)) {
+                    foreach (MeshFilter meshFilter in meshes) {
+                        WriteMesh(writer, meshFilter.sharedMesh, meshFilter.transform, secondarySpace);
+                    }
+
+                    stream.Position = 0;
+                    data = new byte[stream.Length];
+                    stream.Read(data, 0, data.Length);
+                }
+            }
+
+            return data;
+        }
+
         /// <summary>
         /// Deserializes a list of Mesh objects from the provided byte array.
         /// </summary>
         /// <param name="data">Binary data to be deserialized into a list of Mesh objects.</param>
         /// <returns>List of Mesh objects.</returns>
-        public static IEnumerable<MeshStruct> Deserialize(byte[] data) {
-            List<MeshStruct> meshes = new List<MeshStruct>();
+        public static IEnumerable<Mesh> Deserialize(byte[] data) {
+            List<Mesh> meshes = new List<Mesh>();
 
             using (MemoryStream stream = new MemoryStream(data)) {
                 using (BinaryReader reader = new BinaryReader(stream)) {
@@ -68,19 +129,19 @@ namespace oi.plugin.spatialmesh {
             return meshes;
         }
 
-
-
         /// <summary>
         /// Writes a Mesh object to the data stream.
         /// </summary>
         /// <param name="writer">BinaryWriter representing the data stream.</param>
         /// <param name="mesh">The Mesh object to be written.</param>
-        private static void WriteMesh(BinaryWriter writer, int id, Mesh mesh) {
+        /// <param name="transform">If provided, will transform all vertices into world space before writing.</param>
+        /// <param name="secondarySpace">Secondary space to transform the vertices into.</param>
+        private static void WriteMesh(BinaryWriter writer, Mesh mesh, Transform transform = null, Transform secondarySpace = null) {
             SysDiag.Debug.Assert(writer != null);
 
             // Write the mesh data.
-            WriteMeshHeader(writer, id, mesh.vertexCount, mesh.triangles.Length);
-            WriteVertices(writer, mesh.vertices);
+            WriteMeshHeader(writer, mesh.vertexCount, mesh.triangles.Length);
+            WriteVertices(writer, mesh.vertices, transform, secondarySpace);
             WriteTriangleIndicies(writer, mesh.triangles);
         }
 
@@ -89,32 +150,25 @@ namespace oi.plugin.spatialmesh {
         /// </summary>
         /// <param name="reader">BinaryReader representing the data stream.</param>
         /// <returns>Mesh object read from the stream.</returns>
-        private static MeshStruct ReadMesh(BinaryReader reader) {
+        private static Mesh ReadMesh(BinaryReader reader) {
             SysDiag.Debug.Assert(reader != null);
 
-            int packetID = -1;
-            int surfaceID = -1;
             int vertexCount = 0;
             int triangleIndexCount = 0;
 
-            MeshStruct meshStruct = new MeshStruct();
-            meshStruct.mesh = new Mesh();
-
             // Read the mesh data.
-            ReadMeshHeader(reader, out packetID, out surfaceID, out vertexCount, out triangleIndexCount);
+            ReadMeshHeader(reader, out vertexCount, out triangleIndexCount);
+            Vector3[] vertices = ReadVertices(reader, vertexCount);
+            int[] triangleIndices = ReadTriangleIndicies(reader, triangleIndexCount);
 
-            if (packetID == 1) {
-                Vector3[] vertices = ReadVertices(reader, vertexCount);
-                int[] triangleIndices = ReadTriangleIndicies(reader, triangleIndexCount);
+            // Create the mesh.
+            Mesh mesh = new Mesh();
+            mesh.vertices = vertices;
+            mesh.triangles = triangleIndices;
+            // Reconstruct the normals from the vertices and triangles.
+            mesh.RecalculateNormals();
 
-                meshStruct.ID = surfaceID;
-                // Create the mesh.
-                meshStruct.mesh.vertices = vertices;
-                meshStruct.mesh.triangles = triangleIndices;
-                // Reconstruct the normals from the vertices and triangles.
-                meshStruct.mesh.RecalculateNormals();
-            }
-            return meshStruct;
+            return mesh;
         }
 
         /// <summary>
@@ -123,11 +177,9 @@ namespace oi.plugin.spatialmesh {
         /// <param name="writer">BinaryWriter representing the data stream.</param>
         /// <param name="vertexCount">Count of vertices in the mesh.</param>
         /// <param name="triangleIndexCount">Count of triangle indices in the mesh.</param>
-        private static void WriteMeshHeader(BinaryWriter writer, int id, int vertexCount, int triangleIndexCount) {
+        private static void WriteMeshHeader(BinaryWriter writer, int vertexCount, int triangleIndexCount) {
             SysDiag.Debug.Assert(writer != null);
 
-            writer.Write(1); // '1' announces mesh packet
-            writer.Write(id);
             writer.Write(vertexCount);
             writer.Write(triangleIndexCount);
 
@@ -139,11 +191,9 @@ namespace oi.plugin.spatialmesh {
         /// <param name="reader">BinaryReader representing the data stream.</param>
         /// <param name="vertexCount">Count of vertices in the mesh.</param>
         /// <param name="triangleIndexCount">Count of triangle indices in the mesh.</param>
-        private static void ReadMeshHeader(BinaryReader reader, out int packetID, out int surfaceID, out int vertexCount, out int triangleIndexCount) {
+        private static void ReadMeshHeader(BinaryReader reader, out int vertexCount, out int triangleIndexCount) {
             SysDiag.Debug.Assert(reader != null);
 
-            packetID = reader.ReadInt32();
-            surfaceID = reader.ReadInt32();
             vertexCount = reader.ReadInt32();
             triangleIndexCount = reader.ReadInt32();
         }
@@ -153,13 +203,27 @@ namespace oi.plugin.spatialmesh {
         /// </summary>
         /// <param name="reader">BinaryReader representing the data stream.</param>
         /// <param name="vertices">Array of Vector3 structures representing each vertex.</param>
-        private static void WriteVertices(BinaryWriter writer, Vector3[] vertices) {
+        /// <param name="transform">If provided, will convert all vertices into world space before writing.</param>
+        /// <param name="secondarySpace">If provided, will convert the vertices local to this space.</param>
+        private static void WriteVertices(BinaryWriter writer, Vector3[] vertices, Transform transform = null, Transform secondarySpace = null) {
             SysDiag.Debug.Assert(writer != null);
 
-            foreach (Vector3 vertex in vertices) {
-                writer.Write(vertex.x);
-                writer.Write(vertex.y);
-                writer.Write(vertex.z);
+            if (transform != null) {
+                for (int v = 0, vLength = vertices.Length; v < vLength; ++v) {
+                    Vector3 vertex = transform.TransformPoint(vertices[v]);
+                    if (secondarySpace != null) {
+                        vertex = secondarySpace.InverseTransformPoint(vertex);
+                    }
+                    writer.Write(vertex.x);
+                    writer.Write(vertex.y);
+                    writer.Write(vertex.z);
+                }
+            } else {
+                foreach (Vector3 vertex in vertices) {
+                    writer.Write(vertex.x);
+                    writer.Write(vertex.y);
+                    writer.Write(vertex.z);
+                }
             }
         }
 

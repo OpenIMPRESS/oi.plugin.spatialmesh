@@ -8,8 +8,7 @@ public class SpatialMeshTarget : MonoBehaviour {
 
     public Material surfaceMaterial;
 
-    public struct SurfaceObject
-    {
+    public struct SurfaceObject {
         public int ID;
         public int UpdateID;
         public GameObject Object;
@@ -21,12 +20,11 @@ public class SpatialMeshTarget : MonoBehaviour {
     /// When a mesh is created we will need to create a game object with a minimum 
     /// set of components to contain the mesh.  These are the required component types.
     /// </summary>
-    protected readonly Type[] componentsRequiredForSurfaceMesh =
-    {
-            typeof(MeshFilter),
-            typeof(MeshRenderer),
-            typeof(MeshCollider)
-        };
+    protected readonly Type[] componentsRequiredForSurfaceMesh = {
+        typeof(MeshFilter),
+        typeof(MeshRenderer),
+        typeof(MeshCollider)
+    };
 
     // Use this for initialization
     void Start () {
