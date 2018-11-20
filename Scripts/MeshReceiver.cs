@@ -30,33 +30,50 @@ namespace oi.plugin.spatialmesh {
             oiudp = GetComponent<UDPConnector>();
 
         }
+
+        float lastSent = 0f;
+
         void Update() {
             OIMSG msg = oiudp.GetNewData();
             if (msg == null || msg.data == null || msg.data.Length == 0) return;
             HandleMeshMessage(msg);
+
+            /*
+            if (lastSent + 1.0f < Time.time) {
+                oiudp.SendData(new byte[] { 0x00, 0x00, 0x00 });
+                lastSent = Time.time;
+
+            }*/
         }
 
         public void HandleMeshMessage(OIMSG msg) {
             if (msg.msgFamily != (byte)OI_MSGFAMILY.XR) return;
-            if (msg.msgType == (byte)OI_MSGTYPE_XR.SPATIAL_MESH_ADD) { 
+            if (msg.msgType == (byte)OI_MSGTYPE_XR.SPATIAL_MESH_ADD) {
                 MeshStruct ms = OIMeshSerializer.OIDeserialize(msg.data);
-                string object_name = "SM_" + ms.ID.ToString();
-                Transform existing = transform.Find(object_name);
+                Transform existing = GetMeshObject(ms.ID);
                 if (existing != null) { // update
-                    GameObject.Destroy(existing);
+                    GameObject.Destroy(existing.gameObject);
                 }
-                AddMeshObject(ms.mesh, object_name, ms.ID);
+                AddMeshObject(ms.mesh, ms.ID);
             } else if (msg.msgType == (byte) OI_MSGTYPE_XR.SPATIAL_MESH_REMOVE) {
-
+                List<int> remove_ids = new List<int>(IdsSerializer.Deserialize(msg.data));
+                foreach (int ID in remove_ids) {
+                    Transform existing = GetMeshObject(ID);
+                    if (existing != null) Destroy(existing.gameObject);
+                }
             }
         }
+        private Transform GetMeshObject(int meshID = 0) {
+            string object_name = "SM_" + meshID.ToString();
+            return transform.Find(object_name);
+        }
 
-        public GameObject AddMeshObject(Mesh mesh, string objectName, int meshID = 0) {
+        private Transform AddMeshObject(Mesh mesh, int meshID = 0) {
+            string object_name = "SM_" + meshID.ToString();
             SurfaceObject surfaceObject = new SurfaceObject();
             surfaceObject.ID = meshID;
             surfaceObject.UpdateID = 0;
-
-            surfaceObject.Object = new GameObject(objectName, componentsRequiredForSurfaceMesh);
+            surfaceObject.Object = new GameObject(object_name, componentsRequiredForSurfaceMesh);
             surfaceObject.Object.transform.position += transform.position;
             surfaceObject.Object.transform.SetParent(transform);
 
@@ -66,7 +83,7 @@ namespace oi.plugin.spatialmesh {
             surfaceObject.Renderer = surfaceObject.Object.GetComponent<MeshRenderer>();
             surfaceObject.Renderer.sharedMaterial = surfaceMaterial;
 
-            return surfaceObject.Object;
+            return surfaceObject.Object.transform;
         }
     }
 }
