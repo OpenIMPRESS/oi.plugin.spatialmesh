@@ -1,4 +1,4 @@
-﻿#if !UNITY_EDITOR && UNITY_METRO
+﻿//#if !UNITY_EDITOR && UNITY_METRO
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -27,23 +27,24 @@ namespace oi.plugin.spatialmesh {
         }
 
         private void SurfaceObserver_SurfaceUpdated(object sender, DataEventArgs<SpatialMappingSource.SurfaceUpdate> e) {
-            Debug.Log("MS UPDATE " + e.Data.New.ID);
             send_new.Add(e.Data.New);
         }
 
         private void SurfaceObserver_SurfaceRemoved(object sender, DataEventArgs<SpatialMappingSource.SurfaceObject> e) {
-            Debug.Log("MS REMOVE " + e.Data.ID);
             remove_ids.Add(e.Data.ID);
         }
 
         private void SurfaceObserver_SurfaceAdded(object sender, DataEventArgs<SpatialMappingSource.SurfaceObject> e) {
-            Debug.Log("MS NEW " + e.Data.ID);
             send_new.Add(e.Data);
         }
 
         // Update is called once per frame
         void Update() {
             timer += Time.deltaTime;
+            OIMSG msg = connector.GetNewData();
+            if (msg != null && msg.data != null) {
+                Debug.Log("Got msg on spatialmesh connector: "+msg.data.Length);
+            }
             if (timer >= intervalSec) {
                 timer = 0;
                 SendMeshes();
@@ -69,17 +70,19 @@ namespace oi.plugin.spatialmesh {
                 clone.SetVertices(verts);
                 clone.SetTriangles(source.triangles, 0);
 
-                OIMSG msg = new OIMSG((byte) OI_MSGFAMILY.XR, (byte) OI_MSGTYPE_XR.SPATIAL_MESH, OIMeshSerializer.OISerialize(surfaces[index].ID, clone));
+                OIMSG msg = new OIMSG((byte) OI_MSGFAMILY.XR, (byte) OI_MSGTYPE_XR.SPATIAL_MESH_ADD, OIMeshSerializer.OISerialize(surfaces[index].ID, clone));
+
                 connector.SendData(msg);
             }
 
             if (remove_ids.Count > 0) {
-                byte[] idsSerialized = IdsSerializer.Serialize(remove_ids);
+                OIMSG msg = new OIMSG((byte)OI_MSGFAMILY.XR, (byte)OI_MSGTYPE_XR.SPATIAL_MESH_REMOVE, IdsSerializer.Serialize(remove_ids));
+
                 remove_ids.Clear();
-                connector.SendData(idsSerialized);
+                connector.SendData(msg);
             }
         }
 
     }
 }
-#endif
+//#endif
