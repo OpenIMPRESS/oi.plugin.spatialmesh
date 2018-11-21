@@ -1,31 +1,37 @@
-﻿//#if !UNITY_EDITOR && UNITY_METRO
+﻿
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+#if !UNITY_EDITOR && UNITY_METRO
 using HoloToolkit.Unity.SpatialMapping;
+#endif
 using oi.core.network;
 
 namespace oi.plugin.spatialmesh {
 
-    public class MeshSender : MonoBehaviour
-    {
+    public class MeshSender : MonoBehaviour {
 
         public float intervalSec = 2;
         public UDPConnector connector;
 
         private float timer = 0;
+#if !UNITY_EDITOR && UNITY_METRO
         List<int> remove_ids;
         List<ObjectSurfaceObserver.SurfaceObject> send_new;
+#endif
 
         // Use this for initialization
         void Start() {
+#if !UNITY_EDITOR && UNITY_METRO
             remove_ids = new List<int>();
             send_new = new List<ObjectSurfaceObserver.SurfaceObject>();
             SpatialMappingManager.Instance.SurfaceObserver.SurfaceAdded += SurfaceObserver_SurfaceAdded;
             SpatialMappingManager.Instance.SurfaceObserver.SurfaceRemoved += SurfaceObserver_SurfaceRemoved;
             SpatialMappingManager.Instance.SurfaceObserver.SurfaceUpdated += SurfaceObserver_SurfaceUpdated;
+#endif
         }
 
+#if !UNITY_EDITOR && UNITY_METRO
         private void SurfaceObserver_SurfaceUpdated(object sender, DataEventArgs<SpatialMappingSource.SurfaceUpdate> e) {
             send_new.Add(e.Data.New);
         }
@@ -37,6 +43,7 @@ namespace oi.plugin.spatialmesh {
         private void SurfaceObserver_SurfaceAdded(object sender, DataEventArgs<SpatialMappingSource.SurfaceObject> e) {
             send_new.Add(e.Data);
         }
+#endif
 
         // Update is called once per frame
         void Update() {
@@ -52,6 +59,7 @@ namespace oi.plugin.spatialmesh {
         }
 
         private void SendMeshes() {
+#if !UNITY_EDITOR && UNITY_METRO
             List<ObjectSurfaceObserver.SurfaceObject> surfaces = new List<SpatialMappingSource.SurfaceObject>();
             surfaces.AddRange(send_new);
             send_new.Clear();
@@ -81,8 +89,7 @@ namespace oi.plugin.spatialmesh {
                 remove_ids.Clear();
                 connector.SendData(msg);
             }
+#endif
         }
-
     }
 }
-//#endif
